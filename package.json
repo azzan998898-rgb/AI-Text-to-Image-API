@@ -1,7 +1,7 @@
 {
   "name": "text-to-image-api",
-  "version": "2.1.0",
-  "description": "AI text-to-image API using Hugging Face (Stable Diffusion XL)",
+  "version": "2.2.0",
+  "description": "AI text-to-image API using Hugging Face Router (Stable Diffusion XL)",
   "main": "index.js",
   "scripts": {
     "start": "node index.js",
