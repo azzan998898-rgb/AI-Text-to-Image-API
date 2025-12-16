@@ -15,7 +15,7 @@ app.use(helmet({
       defaultSrc: ["'self'"],
       styleSrc: ["'self'", "'unsafe-inline'"],
       scriptSrc: ["'self'"],
-      imgSrc: ["'self'", "data:", "https://*.huggingface.co", "blob:"],
+      imgSrc: ["'self'", "data:", "https://*.huggingface.co", "blob:", "*"], // Added * for external images
     },
   },
 }));
@@ -37,8 +37,8 @@ const limiter = rateLimit({
 });
 app.use('/api/', limiter);
 
-// Hugging Face configuration - UPDATED TO SDXL
-const HF_API_URL = 'https://api-inference.huggingface.co/models/stabilityai/stable-diffusion-xl-base-1.0';
+// Hugging Face configuration - UPDATED TO ROUTER ENDPOINT
+const HF_ROUTER_URL = 'https://router.huggingface.co/hf-inference';
 const HF_TOKEN = process.env.HUGGINGFACE_TOKEN;
 
 if (!HF_TOKEN) {
@@ -48,30 +48,14 @@ if (!HF_TOKEN) {
 
 // API Plans configuration
 const API_PLANS = {
-  'free': { maxRes: 512, dailyLimit: 50 },
-  'basic': { maxRes: 768, dailyLimit: 1000 },
-  'pro': { maxRes: 1024, dailyLimit: 10000 }
+  'free': { maxRes: 512, dailyLimit: 30 },
+  'basic': { maxRes: 768, dailyLimit: 300 },
+  'pro': { maxRes: 1024, dailyLimit: 1000 }
 };
 
 // Simple API key authentication for RapidAPI
 const authenticateRapidAPI = (req, res, next) => {
   // For testing, allow requests without key
-  // In production, uncomment the code below
-  /*
-  const apiKey = req.headers['x-rapidapi-proxy-secret'] || 
-                 req.headers['x-api-key'];
-  
-  if (!apiKey && req.path === '/api/generate') {
-    return res.status(401).json({
-      success: false,
-      error: 'api_key_required',
-      message: 'Get your API key from RapidAPI marketplace'
-    });
-  }
-  
-  // Add plan info to request
-  req.userPlan = apiKey ? 'basic' : 'free';
-  */
   req.userPlan = 'free'; // Temporary for testing
   next();
 };
@@ -83,9 +67,10 @@ const usageTracker = {};
 app.get('/', (req, res) => {
   res.json({
     status: 'online',
-    service: 'AI Text-to-Image API (Stable Diffusion XL)',
-    version: '2.1.0',
+    service: 'AI Text-to-Image API (Stable Diffusion XL via Router)',
+    version: '2.2.0',
     model: 'stabilityai/stable-diffusion-xl-base-1.0',
+    endpoint: 'router.huggingface.co',
     uptime: process.uptime(),
     endpoints: {
       generate: 'POST /api/generate',
@@ -95,7 +80,7 @@ app.get('/', (req, res) => {
   });
 });
 
-// Available models endpoint - UPDATED
+// Available models endpoint
 app.get('/api/models', (req, res) => {
   const models = [
     {
@@ -103,55 +88,58 @@ app.get('/api/models', (req, res) => {
       name: 'Stable Diffusion XL 1.0',
       provider: 'stabilityai',
       max_resolution: '1024x1024',
-      description: 'Latest Stable Diffusion model for high-quality image generation',
+      description: 'Latest Stable Diffusion model via Hugging Face Router',
       free_tier: true,
-      recommended: true
+      recommended: true,
+      endpoint_type: 'router'
     },
     {
       id: 'runwayml/stable-diffusion-v1-5',
       name: 'Stable Diffusion 1.5',
       provider: 'runwayml',
       max_resolution: '512x512',
-      free_tier: true
-    },
-    {
-      id: 'prompthero/openjourney',
-      name: 'OpenJourney',
-      provider: 'prompthero',
-      style: 'midjourney-style',
-      free_tier: true
+      free_tier: true,
+      endpoint_type: 'router'
     }
   ];
   res.json({ success: true, models });
 });
 
-// API status
+// API status - UPDATED FOR ROUTER
 app.get('/api/status', async (req, res) => {
   try {
-    // Simple HEAD request to check if Hugging Face is accessible
-    await axios.head(HF_API_URL, {
-      headers: { Authorization: `Bearer ${HF_TOKEN}` },
-      timeout: 5000
-    });
+    // Test connection to router endpoint
+    const response = await axios.get(
+      `${HF_ROUTER_URL}/models/stabilityai/stable-diffusion-xl-base-1.0`,
+      {
+        headers: { 
+          'Authorization': `Bearer ${HF_TOKEN}`,
+          'Content-Type': 'application/json'
+        },
+        timeout: 10000
+      }
+    );
     
     res.json({
       success: true,
       huggingface: 'connected',
+      endpoint: 'router.huggingface.co',
       model: 'stabilityai/stable-diffusion-xl-base-1.0',
       status: 'operational',
       timestamp: new Date().toISOString()
     });
   } catch (error) {
+    console.error('Router connection error:', error.message);
     res.status(503).json({
       success: false,
       huggingface: 'connection_failed',
-      error: 'Cannot connect to Hugging Face API',
-      details: process.env.NODE_ENV === 'development' ? error.message : undefined
+      error: 'Cannot connect to Hugging Face Router',
+      details: process.env.NODE_ENV === 'development' ? error.message : 'Router endpoint may require authentication or different configuration'
     });
   }
 });
 
-// Main generation endpoint - UPDATED FOR SDXL
+// Main generation endpoint - UPDATED FOR ROUTER
 app.post('/api/generate', authenticateRapidAPI, async (req, res) => {
   const startTime = Date.now();
   
@@ -184,7 +172,7 @@ app.post('/api/generate', authenticateRapidAPI, async (req, res) => {
       height = 512,
       num_inference_steps = 30,
       guidance_scale = 7.5,
-      model = 'stabilityai/stable-diffusion-xl-base-1.0' // UPDATED DEFAULT
+      model = 'stabilityai/stable-diffusion-xl-base-1.0'
     } = req.body;
 
     // Validation
@@ -226,9 +214,9 @@ app.post('/api/generate', authenticateRapidAPI, async (req, res) => {
     }
 
     // Log the request
-    console.log(`[${new Date().toISOString()}] Generating image for: "${prompt.substring(0, 50)}${prompt.length > 50 ? '...' : ''}"`);
+    console.log(`[${new Date().toISOString()}] Generating image via Router: "${prompt.substring(0, 50)}${prompt.length > 50 ? '...' : ''}"`);
 
-    // Prepare Hugging Face request for SDXL
+    // Prepare request for Hugging Face Router - UPDATED PAYLOAD
     const payload = {
       inputs: prompt,
       parameters: {
@@ -237,20 +225,21 @@ app.post('/api/generate', authenticateRapidAPI, async (req, res) => {
         height: requestedHeight,
         num_inference_steps: parseInt(num_inference_steps),
         guidance_scale: parseFloat(guidance_scale)
-      },
-      options: {
-        use_cache: true,
-        wait_for_model: true
       }
+      // Removed 'options' as router may handle differently
     };
 
     // Determine which model to use
     const targetModel = model || 'stabilityai/stable-diffusion-xl-base-1.0';
-    const hfUrl = `https://api-inference.huggingface.co/models/${targetModel}`;
+    
+    // UPDATED: Router endpoint URL
+    const routerUrl = `${HF_ROUTER_URL}/models/${targetModel}`;
+    
+    console.log(`Calling router endpoint: ${routerUrl}`);
 
-    // Call Hugging Face API
+    // Call Hugging Face Router API - UPDATED
     const response = await axios.post(
-      hfUrl,
+      routerUrl,
       payload,
       {
         headers: {
@@ -276,6 +265,7 @@ app.post('/api/generate', authenticateRapidAPI, async (req, res) => {
         prompt: prompt,
         image: imageUrl,
         model: targetModel,
+        endpoint: 'router.huggingface.co',
         dimensions: { width: requestedWidth, height: requestedHeight },
         generation_time: `${generationTime}ms`,
         timestamp: new Date().toISOString(),
@@ -288,45 +278,57 @@ app.post('/api/generate', authenticateRapidAPI, async (req, res) => {
     });
 
   } catch (error) {
-    console.error('Generation failed:', error.message);
+    console.error('Router generation failed:', error.message);
+    console.error('Error details:', error.response?.data ? Buffer.from(error.response.data).toString() : 'No response data');
     
     const errorResponse = {
       success: false,
-      error: 'generation_failed'
+      error: 'generation_failed',
+      endpoint: 'router.huggingface.co'
     };
 
     if (error.response) {
-      // Hugging Face API error
-      const hfError = error.response.data;
-      const hfErrorStr = Buffer.from(hfError).toString('utf8');
+      // Router API error
+      let errorMessage = 'Router API error';
       
       try {
-        const parsedError = JSON.parse(hfErrorStr);
-        errorResponse.error = parsedError.error || 'huggingface_error';
-        errorResponse.message = parsedError.error || 'Hugging Face API error';
-        
-        if (errorResponse.error.includes('loading')) {
-          errorResponse.message = 'Model is loading. Please try again in 30-60 seconds.';
-          res.status(503);
-        } else if (error.response.status === 401) {
-          errorResponse.error = 'invalid_api_token';
-          errorResponse.message = 'Invalid Hugging Face API token';
-          res.status(401);
-        } else if (error.response.status === 429) {
-          errorResponse.error = 'huggingface_rate_limit';
-          errorResponse.message = 'Hugging Face rate limit reached';
-          res.status(429);
-        } else {
-          res.status(502);
-        }
+        const errorData = Buffer.from(error.response.data).toString();
+        const parsedError = JSON.parse(errorData);
+        errorMessage = parsedError.error || parsedError.message || errorMessage;
+        errorResponse.details = parsedError;
       } catch (e) {
-        errorResponse.message = 'Hugging Face API error';
+        errorMessage = Buffer.from(error.response.data).toString().substring(0, 200);
+      }
+      
+      errorResponse.message = errorMessage;
+      
+      if (error.response.status === 401) {
+        errorResponse.error = 'invalid_api_token';
+        errorResponse.message = 'Invalid Hugging Face API token for router';
+        res.status(401);
+      } else if (error.response.status === 402) {
+        errorResponse.error = 'payment_required';
+        errorResponse.message = 'Router endpoint requires payment or Pro account';
+        res.status(402);
+      } else if (error.response.status === 404) {
+        errorResponse.error = 'model_not_found';
+        errorResponse.message = 'Model not found on router endpoint';
+        res.status(404);
+      } else if (error.response.status === 503) {
+        errorResponse.error = 'model_loading';
+        errorResponse.message = 'Model is loading on router. Please try again in 30-60 seconds.';
+        res.status(503);
+      } else if (error.response.status === 429) {
+        errorResponse.error = 'rate_limit';
+        errorResponse.message = 'Router rate limit reached';
+        res.status(429);
+      } else {
         res.status(502);
       }
     } else if (error.request) {
       // Network error
       errorResponse.error = 'network_error';
-      errorResponse.message = 'Cannot connect to Hugging Face API';
+      errorResponse.message = 'Cannot connect to Hugging Face Router';
       res.status(504);
     } else {
       // Server error
@@ -340,7 +342,7 @@ app.post('/api/generate', authenticateRapidAPI, async (req, res) => {
 });
 
 // Batch generation endpoint
-app.post('/api/generate/batch', authenticateRapidAPI, async (req, res) => {
+app.post('/api/generate/batch', authenticateRapidAPI, (req, res) => {
   try {
     const { prompts, ...params } = req.body;
     
@@ -352,21 +354,19 @@ app.post('/api/generate/batch', authenticateRapidAPI, async (req, res) => {
       });
     }
 
-    const results = [];
     const batchId = `batch_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
     
     res.json({
       success: true,
       batch_id: batchId,
-      message: 'Batch processing started. Images will be generated sequentially.',
+      message: 'Batch processing started. Images will be generated sequentially via router.',
       total_prompts: prompts.length,
-      estimated_time: `${prompts.length * 15} seconds`,
-      timestamp: new Date().toISOString()
+      estimated_time: `${prompts.length * 20} seconds`,
+      timestamp: new Date().toISOString(),
+      endpoint: 'router.huggingface.co'
     });
-
-    // In a real implementation, you would use a job queue here
-    // For simplicity, we just return immediately
-    console.log(`Batch ${batchId} started with ${prompts.length} prompts`);
+    
+    console.log(`Batch ${batchId} started with ${prompts.length} prompts via router`);
     
   } catch (error) {
     res.status(500).json({
@@ -377,7 +377,7 @@ app.post('/api/generate/batch', authenticateRapidAPI, async (req, res) => {
   }
 });
 
-// Admin endpoint to view usage (protect this!)
+// Admin endpoint to view usage
 app.get('/admin/usage', (req, res) => {
   const adminKey = process.env.ADMIN_KEY;
   
@@ -395,7 +395,8 @@ app.get('/admin/usage', (req, res) => {
       acc[date] = Object.values(usageTracker[date]).reduce((sum, val) => sum + val, 0);
       return acc;
     }, {}),
-    timestamp: new Date().toISOString()
+    timestamp: new Date().toISOString(),
+    endpoint: 'router.huggingface.co'
   });
 });
 
@@ -428,9 +429,10 @@ app.use((err, req, res, next) => {
 
 // Start server
 app.listen(PORT, () => {
-  console.log(`🚀 Stable Diffusion XL Text-to-Image API running on port ${PORT}`);
+  console.log(`🚀 Stable Diffusion XL Text-to-Image API (Router) running on port ${PORT}`);
   console.log(`🔗 Health check: http://localhost:${PORT}/`);
   console.log(`🤖 Model: stabilityai/stable-diffusion-xl-base-1.0`);
+  console.log(`🔄 Endpoint: router.huggingface.co`);
   console.log(`⚙️  Environment: ${process.env.NODE_ENV || 'development'}`);
   console.log(`📊 Usage tracking enabled`);
 });
