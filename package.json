@@ -1,7 +1,7 @@
 {
   "name": "text-to-image-api",
-  "version": "2.3.0",
-  "description": "AI text-to-image API with RapidAPI integration (Stable Diffusion XL)",
+  "version": "2.4.0",
+  "description": "AI text-to-image API - Revenue-funded pricing (Safe & Profitable)",
   "main": "index.js",
   "scripts": {
     "start": "node index.js",
