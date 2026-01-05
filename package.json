@@ -1,7 +1,7 @@
 {
   "name": "text-to-image-api",
-  "version": "2.4.0",
-  "description": "AI text-to-image API - Revenue-funded pricing (Safe & Profitable)",
+  "version": "2.5.0",
+  "description": "AI Text to Image API - Competitive Price Matched SDXL",
   "main": "index.js",
   "scripts": {
     "start": "node index.js",
