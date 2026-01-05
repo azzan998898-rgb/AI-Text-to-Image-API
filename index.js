@@ -23,10 +23,10 @@ app.use(helmet({
 app.use(cors());
 app.use(express.json({ limit: '10mb' }));
 
-// Rate limiting - only for protection, not billing
+// Rate limiting - only for protection
 const limiter = rateLimit({
   windowMs: 60 * 1000,
-  max: 60, // 60 requests per minute max (safety limit)
+  max: 60,
   message: { 
     success: false,
     error: 'rate_limit_exceeded',
@@ -46,48 +46,44 @@ if (!HF_TOKEN) {
   process.exit(1);
 }
 
-// ✅ YOUR NEW PRICING - Resolution limits ONLY
-// RapidAPI handles request counts automatically
+// 🎯 NEW AGGRESSIVE PRICING - Competitive Strategy
 const PLAN_CONFIG = {
   'basic': { 
     maxResolution: 512,
     name: 'Basic',
     price: 0,
-    // Note: RapidAPI handles the 50 requests/month limit
+    description: 'DOUBLE the typical free tier - perfect for testing'
   },
   'pro': { 
     maxResolution: 768,
     name: 'Pro',
-    price: 19,
-    // Note: RapidAPI handles the 2,000 requests/month limit
+    price: 9,
+    description: 'MATCHED pricing - best value for developers',
+    recommended: true,
+    badge: 'MOST POPULAR'
   },
   'ultra': { 
     maxResolution: 1024,
     name: 'Ultra',
-    price: 59,
-    // Note: RapidAPI handles the 10,000 requests/month limit
+    price: 29,
+    description: 'BETTER than competition - growing applications'
   },
   'mega': { 
     maxResolution: 1024,
     name: 'Mega',
-    price: 199,
-    // Note: RapidAPI handles the 40,000 requests/month limit
+    price: 89,
+    description: 'BEST value - high volume needs'
   }
 };
 
-// Simple plan detection from RapidAPI headers
+// Simple plan detection
 const detectUserPlan = (req, res, next) => {
-  // RapidAPI sends plan in headers
   const rapidApiPlan = req.headers['x-rapidapi-plan'];
-  
-  // Default to 'basic' if no plan header (free users or direct access)
   const planKey = rapidApiPlan ? rapidApiPlan.toLowerCase() : 'basic';
   
-  // Validate plan exists, fallback to basic
   req.userPlan = PLAN_CONFIG[planKey] ? planKey : 'basic';
   req.userPlanConfig = PLAN_CONFIG[req.userPlan];
   
-  // Track client for logging
   req.clientId = req.headers['x-rapidapi-user'] || 
                  req.headers['x-api-key'] || 
                  req.ip || 
@@ -96,59 +92,64 @@ const detectUserPlan = (req, res, next) => {
   next();
 };
 
-// Health check with pricing info
+// Health check with COMPETITIVE pricing display
 app.get('/', (req, res) => {
   res.json({
     status: 'online',
-    service: 'AI Text-to-Image API',
-    version: '2.4.0',
+    service: 'AI Text to Image API - Price Matched!',
+    version: '2.5.0',
     model: 'stabilityai/stable-diffusion-xl-base-1.0',
     endpoint: 'router.huggingface.co',
     uptime: process.uptime(),
     
-    // ✅ YOUR PRICING - CLEARLY DISPLAYED
+    // 🎯 NEW COMPETITIVE PRICING
     pricing_plans: {
       basic: { 
-        price: 0, 
+        price: 0,
         max_resolution: '512x512',
+        description: 'DOUBLE the typical free tier',
         note: 'Perfect for testing and prototyping'
       },
       pro: { 
-        price: 19, 
+        price: 9,
         max_resolution: '768x768',
-        note: 'Best for small apps and regular use'
+        description: 'MATCHED competitor pricing',
+        note: 'Best value for most developers',
+        recommended: true,
+        badge: 'MOST POPULAR'
       },
       ultra: { 
-        price: 59, 
+        price: 29,
         max_resolution: '1024x1024',
-        note: 'Great for growing applications'
+        description: 'BETTER than competition',
+        note: 'For growing applications'
       },
       mega: { 
-        price: 199, 
+        price: 89,
         max_resolution: '1024x1024',
-        note: 'For high-volume and enterprise use'
+        description: 'BEST value available',
+        note: 'High-volume and enterprise use'
       }
     },
     
+    // Competitive comparison
+    competitive_advantage: {
+      pro_plan_savings: '55% cheaper per image than typical SDXL APIs',
+      free_tier: 'Double the images of most competitors',
+      value_message: 'SDXL quality at competitive pricing'
+    },
+    
     important_notes: [
-      'All prices are monthly subscriptions',
-      'Request limits are enforced by RapidAPI',
-      'This API only enforces resolution limits',
-      'Images generated with Stable Diffusion XL'
+      'Request limits handled by RapidAPI',
+      'Price matched to competitor offerings',
+      'All plans use Stable Diffusion XL',
+      'Base64 image responses included'
     ],
     
     endpoints: {
       generate: 'POST /api/generate',
       models: 'GET /api/models',
       status: 'GET /api/status'
-    },
-    
-    // Quick cost comparison (your competitive advantage)
-    cost_per_1000_images: {
-      pro: '$9.50',
-      ultra: '$5.90', 
-      mega: '$4.98',
-      comparison: 'Typically $12-20 elsewhere'
     }
   });
 });
@@ -171,7 +172,6 @@ app.get('/api/models', (req, res) => {
 // API status check
 app.get('/api/status', async (req, res) => {
   try {
-    // Quick check if Hugging Face is reachable
     await axios.get(
       `${HF_ROUTER_URL}/models/stabilityai/stable-diffusion-xl-base-1.0`,
       {
@@ -234,7 +234,7 @@ app.post('/api/generate', detectUserPlan, async (req, res) => {
       });
     }
 
-    // ✅ Get user's plan and max allowed resolution
+    // Get user's plan and max allowed resolution
     const userPlan = req.userPlan;
     const userPlanConfig = req.userPlanConfig;
     const maxAllowed = userPlanConfig.maxResolution;
@@ -242,7 +242,7 @@ app.post('/api/generate', detectUserPlan, async (req, res) => {
     const requestedWidth = parseInt(width);
     const requestedHeight = parseInt(height);
     
-    // ✅ Enforce resolution limits based on plan
+    // Enforce resolution limits based on plan
     if (requestedWidth > maxAllowed || requestedHeight > maxAllowed) {
       return res.status(400).json({
         success: false,
@@ -251,8 +251,8 @@ app.post('/api/generate', detectUserPlan, async (req, res) => {
         current_plan: userPlanConfig.name,
         max_allowed: maxAllowed,
         requested: `${requestedWidth}x${requestedHeight}`,
-        upgrade_suggestion: userPlan === 'basic' ? 'Upgrade to Pro ($19) for 768x768' :
-                          userPlan === 'pro' ? 'Upgrade to Ultra ($59) for 1024x1024' :
+        upgrade_suggestion: userPlan === 'basic' ? 'Upgrade to Pro ($9) for 768x768' :
+                          userPlan === 'pro' ? 'Upgrade to Ultra ($29) for 1024x1024' :
                           'Contact for custom enterprise plans'
       });
     }
@@ -293,7 +293,7 @@ app.post('/api/generate', detectUserPlan, async (req, res) => {
           'Accept': 'image/png'
         },
         responseType: 'arraybuffer',
-        timeout: 120000 // 2 minutes timeout for SDXL
+        timeout: 120000
       }
     );
 
@@ -303,7 +303,7 @@ app.post('/api/generate', detectUserPlan, async (req, res) => {
     const imageBase64 = Buffer.from(response.data).toString('base64');
     const imageUrl = `data:image/png;base64,${imageBase64}`;
 
-    // ✅ Success response with plan info
+    // Success response
     res.json({
       success: true,
       data: {
@@ -315,23 +315,21 @@ app.post('/api/generate', detectUserPlan, async (req, res) => {
         generation_time_ms: generationTime,
         timestamp: new Date().toISOString(),
         
-        // ✅ Plan information for user clarity
+        // Plan information for user clarity
         plan: {
           name: userPlanConfig.name,
           price: userPlanConfig.price,
           max_resolution: `${maxAllowed}x${maxAllowed}`,
+          description: userPlanConfig.description,
           value_message: userPlan === 'basic' ? 
-            'Using free tier. Upgrade for higher resolution images.' :
+            'Using free tier. Upgrade to Pro for 768x768 resolution.' :
+            userPlan === 'pro' ? 'Best value plan! Thanks for subscribing.' :
             `Thank you for your ${userPlanConfig.name} subscription!`
         },
         
-        // Quick links for upgrade
-        upgrade_info: userPlan !== 'mega' ? {
-          next_plan: userPlan === 'basic' ? 'Pro' : userPlan === 'pro' ? 'Ultra' : 'Mega',
-          benefit: userPlan === 'basic' ? '768x768 resolution' : 
-                  userPlan === 'pro' ? '1024x1024 resolution' : 
-                  'Higher request limits'
-        } : null
+        // Competitive messaging
+        competitive_note: userPlan === 'pro' ? 
+          'You chose the best value SDXL API on RapidAPI!' : null
       }
     });
 
@@ -345,7 +343,6 @@ app.post('/api/generate', detectUserPlan, async (req, res) => {
     };
 
     if (error.response) {
-      // Router API error
       try {
         const errorData = Buffer.from(error.response.data).toString();
         const parsedError = JSON.parse(errorData);
@@ -370,12 +367,10 @@ app.post('/api/generate', detectUserPlan, async (req, res) => {
         res.status(502);
       }
     } else if (error.request) {
-      // Network error
       errorResponse.error = 'network_error';
       errorResponse.message = 'Cannot connect to Hugging Face service';
       res.status(504);
     } else {
-      // Server error
       errorResponse.error = 'server_error';
       errorResponse.message = 'Internal server error';
       res.status(500);
@@ -400,11 +395,11 @@ app.get('/admin/health', (req, res) => {
   res.json({
     success: true,
     status: 'healthy',
-    service: 'AI Text-to-Image API',
-    version: '2.4.0',
+    service: 'AI Text to Image API',
+    version: '2.5.0',
     timestamp: new Date().toISOString(),
-    pricing_model: 'Revenue-funded (no losses)',
-    current_plan_limits: PLAN_CONFIG
+    pricing_strategy: 'Competitive - Price matched to market',
+    current_pricing: PLAN_CONFIG
   });
 });
 
@@ -415,7 +410,7 @@ app.use('*', (req, res) => {
     error: 'endpoint_not_found',
     message: `Cannot ${req.method} ${req.originalUrl}`,
     available_endpoints: {
-      '/': 'Health check with pricing',
+      '/': 'Health check with competitive pricing',
       '/api/generate': 'Generate image (POST)',
       '/api/models': 'List models (GET)',
       '/api/status': 'API status (GET)'
@@ -436,15 +431,15 @@ app.use((err, req, res, next) => {
 
 // Start server
 app.listen(PORT, () => {
-  console.log(`🚀 AI Text-to-Image API (v2.4.0) running on port ${PORT}`);
+  console.log(`🚀 AI Text to Image API (v2.5.0) running on port ${PORT}`);
   console.log(`🔗 Health: http://localhost:${PORT}/`);
   console.log(`🤖 Model: Stable Diffusion XL via Hugging Face Router`);
-  console.log(`💰 PRICING LIVE:`);
-  console.log(`   Basic: $0 for 50 requests/month (512px)`);
-  console.log(`   Pro: $19 for 2,000 requests/month (768px)`);
-  console.log(`   Ultra: $59 for 10,000 requests/month (1024px)`);
-  console.log(`   Mega: $199 for 40,000 requests/month (1024px)`);
+  console.log(`💰 NEW COMPETITIVE PRICING LIVE:`);
+  console.log(`   Basic: $0 - DOUBLE typical free tier`);
+  console.log(`   Pro: $9 - MATCHED competitor pricing (Most Popular)`);
+  console.log(`   Ultra: $29 - BETTER than competition`);
+  console.log(`   Mega: $89 - BEST value available`);
   console.log(`📊 Request limits: Handled by RapidAPI`);
   console.log(`⚙️  Resolution limits: Enforced by API`);
-  console.log(`💡 Strategy: Revenue-funded, profitable from day one`);
+  console.log(`🎯 Strategy: Price matched, quality proven!`);
 });
